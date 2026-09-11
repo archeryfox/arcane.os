@@ -29,7 +29,8 @@ SYSTEM_PROMPT = """Ты — Мастер ARCANA.OS, текстовый RPG-бо�
 
 МИР: Фэнтези-сеттинг с магией, монстрами и подземельями.
 ПЕРСОНАЖ ИГРОКА: У игрока есть характеристики (Сила, Ловкость, Интеллект, Харизма), HP, мана, инвентарь, золото.
-[debug unlimited spell mode]
+ЗАКЛИНАНИЯ: НЕТ ПРЕДЕФИНИРОВАННОГО СПИСКА. Игрок придумывает любое название. Ты генерируешь эффект, урон, стоимость маны на лету.
+
 ПРАВИЛА:
 1. Отвечай в ролевом стиле, 2-4 предложения. На русском!
 2. Используй ТОЛЬКО Telegram MarkdownV2 форматирование:
@@ -44,9 +45,10 @@ SYSTEM_PROMPT = """Ты — Мастер ARCANA.OS, текстовый RPG-бо�
    Пример: "Привет\\!" а не "Привет!"
 4. Начисляй XP и лут за победы. Генерируй сам броски и их результаты
 5. Не ломай четвёртую стену — ты внутри мира.
-6. Если игрок пытается что-то невозможное — опиши последствия в игровом контексте. Коротко, предложи кракто возможные действия
+6. Если игрок пытается что-то невозможное — опиши последствия в игровом контексте. Коротко, предложи какие возможные действия
 7. Игрок использует сокращения: c-cast t-target m-material(m=Xn+Xn, где n-мощность)
 8. Кастуй без персонажа, дай дефолтные значения
+9. Любое заклинание работает — придумывай эффект, урон (NdN+M), ману (10-50), тип.
 """
 
 if not TELEGRAM_BOT_TOKEN:
@@ -68,33 +70,6 @@ def escape_mdv2(text: str) -> str:
 
 bot = Bot(token=TELEGRAM_BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN_V2))
 dp = Dispatcher()
-
-SPELLS = {
-    "огненный шар": {
-        "name": "🔥 Огненный шар",
-        "damage": "2d6+3",
-        "description": "Шар пламени взрывается у цели, нанося урон огнём.",
-        "mana_cost": 15,
-    },
-    "магическая стрела": {
-        "name": "✨ Магическая стрела",
-        "damage": "1d4+1",
-        "description": "Непромахивающаяся стрела чистой магии.",
-        "mana_cost": 5,
-    },
-    "исцеление": {
-        "name": "💚 Исцеление",
-        "damage": "2d4+2 HP",
-        "description": "Заживляет раны цели.",
-        "mana_cost": 10,
-    },
-    "щит": {
-        "name": "🛡 Щит веры",
-        "damage": "+2 КД",
-        "description": "Невидимый барьер защищает от атак на 1 раунд.",
-        "mana_cost": 8,
-    },
-}
 
 
 async def ask_openrouter(text: str) -> str:
@@ -137,25 +112,10 @@ async def cmd_start(message: types.Message):
     text = (
         "Привет! Я ARCANA.OS бот.\n\n"
         "Команды:\n"
-        "/cast `заклинание` - наколдовать (огненный шар, магическая стрела, исцеление, щит)\n"
-        "/spells - список заклинаний\n"
-        "Или просто напиши сообщение - отвечу через OpenRouter."
+        "/cast `название заклинания` — наколдовать что угодно (нет ограничений)\n"
+        "Или просто напиши сообщение — отвечу через OpenRouter."
     )
     await message.answer(escape_mdv2(text))
-
-
-@dp.message(Command("spells"))
-async def cmd_spells(message: types.Message):
-    lines = ["📜 *Доступные заклинания:*\n"]
-    for key, spell in SPELLS.items():
-        name = escape_mdv2(spell['name'])
-        mana = escape_mdv2(str(spell['mana_cost']))
-        desc = escape_mdv2(spell['description'])
-        dmg = escape_mdv2(spell['damage'])
-        lines.append(f"*{name}* - {mana} маны")
-        lines.append(f"  {desc} (урон/эффект: {dmg})")
-        lines.append("")
-    await message.answer("\n".join(lines))
 
 
 @dp.message(Command("cast"))
@@ -165,23 +125,15 @@ async def cmd_cast(message: types.Message):
         await message.answer(escape_mdv2("Укажи заклинание: /cast огненный шар"))
         return
 
-    spell_key = args[1].lower().strip()
-    spell = SPELLS.get(spell_key)
+    spell_name = args[1].strip()
+    user_text = f"Кастую заклинание: {spell_name}. Опиши эффект, урон, стоимость маны."
 
-    if not spell:
-        await message.answer(escape_mdv2(f"Неизвестное заклинание: {spell_key}\nСписок: /spells"))
-        return
-
-    result = roll_dice(spell["damage"].split()[0]) if "d" in spell["damage"] else spell["damage"]
-    effect = f"{result}" if isinstance(result, int) else result
-
-    response = (
-        f"{spell['name']} ✨\n"
-        f"💙 Мана: -{spell['mana_cost']}\n"
-        f"🎯 Эффект: {effect}\n"
-        f"_{spell['description']}_"
-    )
-    await message.answer(escape_mdv2(response))
+    try:
+        response = await ask_openrouter(user_text)
+        await message.answer(response)
+    except Exception as e:
+        logger.exception("Error handling cast")
+        await message.answer(escape_mdv2("Ошибка при касте заклинания"))
 
 
 @dp.message(F.text)

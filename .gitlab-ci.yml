@@ -1,0 +1,122 @@
+stages:
+  - test
+  - build
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
+
+test:
+  stage: test
+  image: python:3.11-slim
+  before_script:
+    - pip install --no-cache-dir -r requirements.txt
+  script:
+    - python -c "import bot; print('Import OK')"
+    - python -c "from bot import roll_dice; print([roll_dice('2d6+3') for _ in range(3)])"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+build:
+  stage: build
+  image: docker:27
+  services:
+    - docker:27-dind
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+  script:
+    - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA .
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+    - docker tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA $CI_REGISTRY_IMAGE:latest
+    - docker push $CI_REGISTRY_IMAGE:latest
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+deploy_railway:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl
+  script:
+    - |
+      if [ -n "$RAILWAY_TOKEN" ]; then
+        curl -X POST "https://backboard.railway.app/graphql/v2" \
+          -H "Authorization: Bearer $RAILWAY_TOKEN" \
+          -H "Content-Type: application/json" \
+          -d '{"query":"mutation($environmentId:String!){redeployEnvironment(environmentId:$environmentId){id}}","variables":{"environmentId":"'$RAILWAY_ENVIRONMENT_ID'"}}'
+        echo "Railway redeploy triggered"
+      else
+        echo "RAILWAY_TOKEN not set, skipping Railway deploy"
+      fi
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+
+deploy_render:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl
+  script:
+    - |
+      if [ -n "$RENDER_API_KEY" ] && [ -n "$RENDER_SERVICE_ID" ]; then
+        curl -X POST "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys" \
+          -H "Authorization: Bearer $RENDER_API_KEY" \
+          -H "Content-Type: application/json"
+        echo "Render deploy triggered"
+      else
+        echo "RENDER_API_KEY/SERVICE_ID not set, skipping Render deploy"
+      fi
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+
+deploy_fly:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl
+  script:
+    - |
+      if [ -n "$FLY_API_TOKEN" ] && [ -n "$FLY_APP_NAME" ]; then
+        curl -X POST "https://api.machines.dev/v1/apps/$FLY_APP_NAME/machines" \
+          -H "Authorization: Bearer $FLY_API_TOKEN" \
+          -H "Content-Type: application/json" \
+          -d '{"config":{"image":"'$CI_REGISTRY_IMAGE:latest'"}}'
+        echo "Fly.io deploy triggered"
+      else
+        echo "FLY_API_TOKEN/APP_NAME not set, skipping Fly deploy"
+      fi
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+
+deploy_vps:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache openssh-client
+    - eval $(ssh-agent -s)
+    - echo "$VPS_SSH_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
+  script:
+    - |
+      if [ -n "$VPS_HOST" ] && [ -n "$VPS_USER" ] && [ -n "$VPS_SSH_KEY" ]; then
+        ssh $VPS_USER@$VPS_HOST << 'EOF'
+          cd /opt/arcana-os
+          git pull origin main
+          docker compose pull
+          docker compose up -d --build
+          docker image prune -f
+        EOF
+        echo "VPS deploy completed"
+      else
+        echo "VPS vars not set, skipping VPS deploy"
+      fi
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
