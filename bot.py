@@ -2,6 +2,7 @@ import os
 import asyncio
 import random
 import re
+from collections import defaultdict
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
@@ -47,6 +48,11 @@ SYSTEM_PROMPT = """Ты — Мастер ARCANA.OS, текстовый RPG-бо�
 9. Любое заклинание работает — придумывай эффект, урон (NdN+M), ману (10-50), тип.
 """
 
+# === ИСТОРИЯ РАЗГОВОРОВ ===
+# Per-user conversation history: {user_id: [{"role": "user"/"assistant", "content": "..."}]}
+MAX_HISTORY = 20  # last N messages to keep in context
+conversations: dict[int, list[dict[str, str]]] = defaultdict(list)
+
 if not TELEGRAM_BOT_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN not set in environment variables")
 if not OPENROUTER_API_KEY:
@@ -65,7 +71,10 @@ bot = Bot(token=TELEGRAM_BOT_TOKEN, default=DefaultBotProperties(parse_mode=Pars
 dp = Dispatcher()
 
 
-async def ask_openrouter(text: str) -> str:
+async def ask_openrouter(text: str, user_id: int) -> str:
+    """Send message to OpenRouter with conversation history."""
+    history = conversations[user_id]
+
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
@@ -74,6 +83,7 @@ async def ask_openrouter(text: str) -> str:
         "model": MODEL,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
+            *history,
             {"role": "user", "content": text},
         ],
         "temperature": 0.7,
@@ -85,7 +95,16 @@ async def ask_openrouter(text: str) -> str:
                 logger.error(f"OpenRouter error {resp.status}: {error_text}")
                 return "Ошибка при обращении к OpenRouter API"
             data = await resp.json()
-            return data["choices"][0]["message"]["content"]
+            response = data["choices"][0]["message"]["content"]
+
+    # Update history
+    history.append({"role": "user", "content": text})
+    history.append({"role": "assistant", "content": response})
+    # Trim to last N messages
+    if len(history) > MAX_HISTORY:
+        conversations[user_id] = history[-MAX_HISTORY:]
+
+    return response
 
 
 def roll_dice(notation: str) -> int:
@@ -106,9 +125,18 @@ async def cmd_start(message: types.Message):
         "Привет! Я ARCANA.OS бот.\n\n"
         "Команды:\n"
         "/cast `название заклинания` — наколдовать что угодно (нет ограничений)\n"
+        "/reset — сбросить историю разговора\n"
         "Или просто напиши сообщение — отвечу через OpenRouter."
     )
     await message.answer(escape_mdv2(text))
+
+
+@dp.message(Command("reset"))
+async def cmd_reset(message: types.Message):
+    user_id = message.from_user.id
+    if user_id in conversations:
+        del conversations[user_id]
+    await message.answer("История разговора сброшена.", parse_mode=None)
 
 
 @dp.message(Command("cast"))
@@ -122,7 +150,7 @@ async def cmd_cast(message: types.Message):
     user_text = f"Кастую заклинание: {spell_name}. Опиши эффект, урон, стоимость маны."
 
     try:
-        response = await ask_openrouter(user_text)
+        response = await ask_openrouter(user_text, message.from_user.id)
         formatted = format_ai_response(response)
         await message.answer(formatted, parse_mode=ParseMode.HTML)
     except Exception as e:
@@ -136,7 +164,7 @@ async def handle_message(message: types.Message):
     logger.info(f"Received message from {message.from_user.id}: {user_text}")
 
     try:
-        response = await ask_openrouter(user_text)
+        response = await ask_openrouter(user_text, message.from_user.id)
         formatted = format_ai_response(response)
         await message.answer(formatted, parse_mode=ParseMode.HTML)
     except Exception as e:
