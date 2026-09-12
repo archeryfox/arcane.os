@@ -9,7 +9,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 import aiohttp
 
-from app.utils.logger import setup_logger
+from app.utils.logger import setup_logger, format_ai_response
 
 load_dotenv()
 
@@ -36,8 +36,9 @@ SYSTEM_PROMPT = """Ты — Мастер ARCANA.OS, текстовый RPG-бо�
 
 ПРАВИЛА:
 1. Отвечай в ролевом стиле, 2-4 предложения. На русском!
-2. Пиши ОДНОЙ Сплошной текст БЕЗ какого-либо форматирования. НЕ используй markdown, HTML, жирный, курсив, код, заголовки, списки. Обычный текст.
-3. Не используй спецсимволы, которые нужно экранировать: _ * [ ] ( ) ~ ` > # + - = | { } . !
+2. Используй стандартный Markdown для форматирования:
+   **жирный**, *курсив*, `код`, [ссылка](url), - список, > цитата.
+3. Никаких Telegram-специфичных тегов (tg-spoiler, и т.д.).
 4. Начисляй XP и лут за победы. Генерируй сам броски и их результаты
 5. Не ломай четвёртую стену — ты внутри мира.
 6. Если игрок пытается что-то невозможное — опиши последствия в игровом контексте. Коротко, предложи какие возможные действия
@@ -122,7 +123,8 @@ async def cmd_cast(message: types.Message):
 
     try:
         response = await ask_openrouter(user_text)
-        await message.answer(response, parse_mode=None)
+        formatted = format_ai_response(response)
+        await message.answer(formatted, parse_mode=ParseMode.HTML)
     except Exception as e:
         logger.exception("Error handling cast")
         await message.answer("Ошибка при касте заклинания", parse_mode=None)
@@ -135,7 +137,8 @@ async def handle_message(message: types.Message):
 
     try:
         response = await ask_openrouter(user_text)
-        await message.answer(response, parse_mode=None)
+        formatted = format_ai_response(response)
+        await message.answer(formatted, parse_mode=ParseMode.HTML)
     except Exception as e:
         logger.exception("Error handling message")
         await message.answer("Произошла ошибка при обработке сообщения", parse_mode=None)

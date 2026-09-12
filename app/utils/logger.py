@@ -3,9 +3,25 @@ import logging.handlers
 import os
 from pathlib import Path
 
+try:
+    from chatgpt_md_converter import telegram_format
+except ImportError:
+    telegram_format = None
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 LOGS_DIR = PROJECT_ROOT / "logs"
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def format_ai_response(text: str) -> str:
+    """Конвертирует AI Markdown в Telegram HTML.
+
+    Uses chatgpt-md-converter if available, otherwise returns text as-is.
+    """
+    if telegram_format:
+        return telegram_format(text)
+    logging.warning("chatgpt-md-converter not installed, returning raw text")
+    return text
 
 
 def setup_logger(
