@@ -1,6 +1,5 @@
 import os
 import asyncio
-import logging
 import random
 import re
 from dotenv import load_dotenv
@@ -10,7 +9,11 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 import aiohttp
 
+from app.utils.logger import setup_logger
+
 load_dotenv()
+
+logger = setup_logger("arcana_os")
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -55,9 +58,6 @@ if not TELEGRAM_BOT_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN not set in environment variables")
 if not OPENROUTER_API_KEY:
     raise ValueError("OPENROUTER_API_KEY not set in environment variables")
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # MarkdownV2 special chars that need escaping
 MDV2_ESCAPE = re.compile(r"([_*\[\]()~`>#+\-=|{}.!])")
