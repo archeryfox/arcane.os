@@ -130,10 +130,10 @@ async def cmd_cast(message: types.Message):
 
     try:
         response = await ask_openrouter(user_text)
-        await message.answer(escape_mdv2(response))
+        await message.answer(escape_mdv2(response), parse_mode=None)
     except Exception as e:
         logger.exception("Error handling cast")
-        await message.answer(escape_mdv2("Ошибка при касте заклинания"))
+        await message.answer(escape_mdv2("Ошибка при касте заклинания"), parse_mode=None)
 
 
 @dp.message(F.text)
@@ -143,10 +143,10 @@ async def handle_message(message: types.Message):
 
     try:
         response = await ask_openrouter(user_text)
-        await message.answer(escape_mdv2(response))
+        await message.answer(escape_mdv2(response), parse_mode=None)
     except Exception as e:
         logger.exception("Error handling message")
-        await message.answer("Произошла ошибка при обработке сообщения")
+        await message.answer("Произошла ошибка при обработке сообщения", parse_mode=None)
 
 
 async def main():
