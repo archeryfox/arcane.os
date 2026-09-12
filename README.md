@@ -207,7 +207,8 @@ logger = setup_logger("arcana_os")
 
 | Ресурс | Описание |
 |---|---|
-| [`adr-chat/0001`](adr-chat/0001-initial-bot-structure.md) – [`adr-chat/0022`](adr-chat/0022-project-structure-clean-arch.md) | 22 ADR — эволюция проекта |
+| [`adr/`](adr/0001-project-transition.md) | Проектные ADR (актуальные) |
+| [`adr-chat/`](adr-chat/0001-initial-bot-structure.md) | Исторические ADR (0001–0022) |
 | [`Идея.md`](Идея.md) | Полная спецификация игры (12 секций) |
 | [`DEPLOY.md`](DEPLOY.md) | Руководство по развёртыванию |
 | [`ADR 013`](adr-chat/0013-architecture-refactor-fastapi-webhook.md) | Архитектура: FastAPI + webhook |
